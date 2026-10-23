@@ -1,0 +1,275 @@
+/* ============================================================
+   PHASE 10 — ACTIVE CONNECTION MONITORING PAGE STYLES
+   Uses existing NetWatch NOC dark palette CSS variables.
+   ============================================================ */
+
+.connections-table-container {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-panel);
+}
+
+.connections-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.connections-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-panel-header, #131b26);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.connections-table th.sortable {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.connections-table th.sortable:hover {
+  color: var(--accent-cyan, #00e5ff);
+}
+
+.connections-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.connections-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Protocol badge */
+.proto-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.proto-badge--tcp {
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent-cyan, #00e5ff);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+.proto-badge--udp {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--status-warning, #f59e0b);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* State badges */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.state-badge--established {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--status-live, #10b981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.state-badge--listen {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.state-badge--timewait {
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+.state-badge--closewait {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-critical, #ef4444);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.state-badge--other {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--text-muted, #94a3b8);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Process column */
+.proc-name {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+.proc-unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* KPICards row */
+.conn-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.conn-kpi-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conn-kpi-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.conn-kpi-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+/* Monospace endpoint */
+.endpoint-mono {
+  font-family: var(--font-mono, "JetBrains Mono", Consolas, monospace);
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+
+.endpoint-port {
+  color: var(--accent-cyan, #00e5ff);
+}
+
+/* ── Cohesive Toolbar & Form Elements ───────────────────────── */
+.devices-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #0f141c);
+  border: 1px solid var(--border-subtle, #202b3c);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.devices-search-input {
+  background: var(--bg-panel, #131924);
+  border: 1px solid var(--border-subtle, #202b3c);
+  color: var(--text-main, #f1f5f9);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.devices-search-input:focus {
+  border-color: var(--accent-cyan, #00d4ff);
+  background: var(--bg-card, #171f2c);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.2);
+}
+
+.devices-search-input::placeholder {
+  color: var(--text-dim, #64748b);
+}
+
+.devices-select {
+  background: var(--bg-panel, #131924);
+  border: 1px solid var(--border-subtle, #202b3c);
+  color: var(--text-muted, #94a3b8);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.devices-select:focus,
+.devices-select:hover {
+  border-color: var(--border-accent, #2e3e57);
+  color: var(--text-main, #f1f5f9);
+}
+
+.devices-select option {
+  background: var(--bg-panel, #131924);
+  color: var(--text-main, #f1f5f9);
+}
+
+.devices-filter-btn {
+  background: var(--bg-panel, #131924);
+  border: 1px solid var(--border-subtle, #202b3c);
+  color: var(--text-muted, #94a3b8);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.devices-filter-btn:hover {
+  color: var(--text-main, #f1f5f9);
+  border-color: var(--border-accent, #2e3e57);
+}
+
+.devices-filter-btn.active {
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-cyan, #00d4ff);
+  border-color: rgba(0, 212, 255, 0.35);
+  font-weight: 600;
+}
+
+.devices-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary, #0f141c);
+  border: 1px solid var(--border-subtle, #202b3c);
+  color: var(--text-muted, #94a3b8);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.devices-btn:hover:not(:disabled) {
+  background: var(--bg-card, #171f2c);
+  color: var(--text-main, #f1f5f9);
+  border-color: var(--border-accent, #2e3e57);
+}
+
+.devices-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

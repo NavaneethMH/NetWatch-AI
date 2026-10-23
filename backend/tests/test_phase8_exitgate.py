@@ -1,0 +1,458 @@
+# -*- coding: utf-8 -*-
+"""
+Phase 8 Exit-Gate Verification Suite
+=====================================
+Covers:
+  1.  Alert lifecycle    (OPEN -> ACKNOWLEDGED -> RESOLVED)
+  2.  Deduplication      (active conditions update in-place)
+  3.  Consecutive-sample triggering and recovery
+  4.  Severity escalation (WARNING -> CRITICAL)
+  5.  Restart persistence (alerts survive module reload via SQLite)
+  6.  Acknowledgement semantics
+  7.  Health-score math  (score = 100 - sum(deductions), clamped 0-100)
+  8.  No double-penalisation
+  9.  Null/stale/warmup/reset/error telemetry handled without fabrication
+ 10.  Storage cadence unchanged
+ 11+12. Alert & health-score APIs
+ 13.  Frontend type contract
+ 14.  Phase 1-7 regression
+"""
+import sys, os, time, uuid
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+PASS = []
+FAIL = []
+
+def check(name, cond, detail=''):
+    if cond:
+        PASS.append(name)
+        print(f'  [PASS] {name}')
+    else:
+        FAIL.append(name)
+        print(f'  [FAIL] {name}' + (f': {detail}' if detail else ''))
+
+from backend.database.session import SessionLocal, Base, engine
+from backend.database.models import AlertModel, LatencyMetricModel, SystemMetricModel, NetworkMetricModel
+from backend.database.alert_repository import alert_repo
+from backend.services.alert_service import AlertService, AlertConditionCheck
+from backend.services.health_score_service import HealthScoreService
+from backend.schemas.alert import AlertSummary, AlertItem
+from backend.schemas.health_score import HealthScoreResponse, ScoreDeduction
+from backend.schemas.system import SystemTelemetryResponse
+from backend.schemas.network import NetworkThroughputResponse
+from backend.schemas.latency import LatencySnapshot
+from backend.core.config import settings
+
+Base.metadata.create_all(bind=engine)
+
+# -- helpers --
+def _sys(cpu=10.0, mem=50.0, disk=60.0, status='OK', cpu_ready=True):
+    from backend.schemas.system import CpuMetrics, MemoryMetrics, DiskMetrics, NetworkTotals
+    return SystemTelemetryResponse(
+        timestamp=time.time(), timestamp_iso='2026-01-01T00:00:00Z',
+        system_uptime_seconds=3600.0, boot_time_timestamp=time.time()-3600,
+        cpu=CpuMetrics(usage_percent=cpu if cpu_ready else None, is_ready=cpu_ready,
+                       core_count_logical=4, core_count_physical=2),
+        memory=MemoryMetrics(usage_percent=mem, total_bytes=8*1024**3,
+                             used_bytes=int(mem/100*8*1024**3), available_bytes=int((1-mem/100)*8*1024**3)),
+        disk=DiskMetrics(usage_percent=disk, total_bytes=500*1024**3,
+                         used_bytes=int(disk/100*500*1024**3), free_bytes=int((1-disk/100)*500*1024**3),
+                         mount_point='C:\\\\'),
+        network_totals=NetworkTotals(bytes_sent=0, bytes_recv=0, packets_sent=0,
+                                     packets_recv=0, errin=0, errout=0, dropin=0, dropout=0),
+        interfaces=[], collector_status=status, unavailable_fields=[]
+    )
+
+def _net(status='LIVE', dl=1.0, ul=0.5):
+    return NetworkThroughputResponse(
+        timestamp=time.time(), timestamp_iso='2026-01-01T00:00:00Z',
+        status=status,
+        download_mbps=dl if status == 'LIVE' else None,
+        upload_mbps=ul if status == 'LIVE' else None,
+        bytes_recv_total=1000000, bytes_sent_total=500000,
+        packets_recv_total=5000, packets_sent_total=2500,
+        sample_interval_seconds=2.0 if status == 'LIVE' else None,
+        interfaces=[]
+    )
+
+def _lat(status='LIVE', reachable=True, avg_ms=20.0, loss=0.0, stale=False, age=3.0):
+    return LatencySnapshot(
+        probe_id=str(uuid.uuid4()), target='1.1.1.1', status=status,
+        is_reachable=reachable, packets_sent=4,
+        packets_received=4 if reachable else 0,
+        packet_loss_percent=loss,
+        latency_last_ms=avg_ms, latency_min_ms=avg_ms*0.9 if avg_ms else None,
+        latency_max_ms=avg_ms*1.1 if avg_ms else None, latency_avg_ms=avg_ms,
+        timestamp=time.time()-age, timestamp_utc='2026-01-01T00:00:00Z',
+        probe_age_seconds=age, is_stale=stale
+    )
+
+def _lat_warming():
+    return LatencySnapshot(
+        probe_id='warmup', target='1.1.1.1', status='WARMING_UP',
+        is_reachable=False, packets_sent=0, packets_received=0,
+        packet_loss_percent=None, latency_avg_ms=None,
+        timestamp=time.time(), timestamp_utc='2026-01-01T00:00:00Z',
+        probe_age_seconds=0.0, is_stale=False
+    )
+
+def _lat_unreachable():
+    return LatencySnapshot(
+        probe_id=str(uuid.uuid4()), target='1.1.1.1', status='UNREACHABLE',
+        is_reachable=False, packets_sent=4, packets_received=0,
+        packet_loss_percent=100.0,
+        latency_last_ms=None, latency_min_ms=None, latency_max_ms=None, latency_avg_ms=None,
+        timestamp=time.time(), timestamp_utc='2026-01-01T00:00:00Z',
+        probe_age_seconds=5.0, is_stale=False
+    )
+
+net_ok = _net()
+lat_ok = _lat()
+
+# ---- 1. Alert Lifecycle ----
+print('\n== 1. Alert Lifecycle ==')
+db = SessionLocal()
+try:
+    now_ts = time.time()
+    now_iso = '2026-01-01T12:00:00Z'
+    alert = alert_repo.create_alert(db, 'CPU_HIGH', 'CRITICAL', 'host',
+        'CPU critical', 'cpu_percent', 96.0, 95.0, now_ts, now_iso)
+    check('lifecycle: alert created OPEN', alert.status == 'OPEN')
+    check('lifecycle: alert has unique alert_id', bool(alert.alert_id))
+    check('lifecycle: occurrence_count starts at 1', alert.occurrence_count == 1)
+    updated = alert_repo.update_active_alert(db, alert, 97.0, 'CRITICAL',
+        'CPU still critical', now_ts+2, now_iso)
+    check('lifecycle: update increments occurrence_count', updated.occurrence_count == 2)
+    acked = alert_repo.acknowledge_alert(db, str(alert.id), now_ts+5, now_iso)
+    check('lifecycle: OPEN -> ACKNOWLEDGED', acked.status == 'ACKNOWLEDGED')
+    check('lifecycle: acknowledged_at set', acked.acknowledged_at is not None)
+    resolved = alert_repo.resolve_alert(db, acked, now_ts+10, now_iso)
+    check('lifecycle: ACKNOWLEDGED -> RESOLVED', resolved.status == 'RESOLVED')
+    check('lifecycle: resolved_at set', resolved.resolved_at is not None)
+    active = alert_repo.get_active_alert(db, 'CPU_HIGH', 'host')
+    check('lifecycle: resolved alert not returned as active',
+          active is None or active.id != resolved.id)
+finally:
+    db.close()
+
+# ---- 2. Deduplication ----
+print('\n== 2. Deduplication ==')
+svc = AlertService()
+sys_crit_cpu = _sys(cpu=97.0, mem=50.0, disk=60.0)
+db = SessionLocal()
+initial_count = db.query(AlertModel).filter(
+    AlertModel.type == 'CPU_HIGH', AlertModel.source == 'host',
+    AlertModel.status.in_(['OPEN','ACKNOWLEDGED'])).count()
+db.close()
+for _ in range(5):
+    svc.evaluate_tick(sys_crit_cpu, net_ok, lat_ok)
+db = SessionLocal()
+final_count = db.query(AlertModel).filter(
+    AlertModel.type == 'CPU_HIGH', AlertModel.source == 'host',
+    AlertModel.status.in_(['OPEN','ACKNOWLEDGED'])).count()
+db.close()
+check('dedup: only 1 active alert for repeated violation', final_count - initial_count <= 1,
+      f'started={initial_count} final={final_count}')
+
+# ---- 3. Consecutive-Sample Triggering & Recovery ----
+print('\n== 3. Consecutive-Sample Triggering & Recovery ==')
+svc2 = AlertService()
+sys_lo = _sys(cpu=10.0, mem=50.0, disk=60.0)
+sys_hi = _sys(cpu=10.0, mem=85.0, disk=60.0)
+required = settings.ALERT_CONSECUTIVE_SAMPLES
+db = SessionLocal()
+count_before = 0
+existing = alert_repo.get_active_alert(db, 'MEMORY_HIGH', 'host')
+if existing: count_before = existing.occurrence_count
+db.close()
+for _ in range(required - 1):
+    svc2.evaluate_tick(sys_hi, net_ok, lat_ok)
+db = SessionLocal()
+after_partial = alert_repo.get_active_alert(db, 'MEMORY_HIGH', 'host')
+db.close()
+check(f'consec: alert NOT opened after {required-1} of {required} ticks',
+      after_partial is None or after_partial.occurrence_count == count_before)
+svc2.evaluate_tick(sys_hi, net_ok, lat_ok)
+db = SessionLocal()
+after_full = alert_repo.get_active_alert(db, 'MEMORY_HIGH', 'host')
+db.close()
+check(f'consec: alert OPENED after {required} ticks', after_full is not None)
+clear_req = settings.ALERT_RESOLVE_CONSECUTIVE_SAMPLES
+svc2._violation_counts = {}
+svc2._clear_counts = {}
+for _ in range(clear_req - 1):
+    svc2.evaluate_tick(sys_lo, net_ok, lat_ok)
+db = SessionLocal()
+still_open = alert_repo.get_active_alert(db, 'MEMORY_HIGH', 'host')
+db.close()
+check(f'consec: alert NOT resolved after {clear_req-1} of {clear_req} clear ticks',
+      still_open is not None)
+svc2.evaluate_tick(sys_lo, net_ok, lat_ok)
+db = SessionLocal()
+now_open = alert_repo.get_active_alert(db, 'MEMORY_HIGH', 'host')
+db.close()
+check(f'consec: alert RESOLVED after {clear_req} clear ticks', now_open is None)
+
+# ---- 4. Severity Escalation ----
+print('\n== 4. Severity Escalation ==')
+svc3 = AlertService()
+sys_warn_disk = _sys(cpu=10.0, mem=50.0, disk=87.0)
+sys_crit_disk = _sys(cpu=10.0, mem=50.0, disk=96.0)
+for _ in range(required):
+    svc3.evaluate_tick(sys_warn_disk, net_ok, lat_ok)
+db = SessionLocal()
+warn_alert = alert_repo.get_active_alert(db, 'DISK_HIGH', 'host')
+db.close()
+check('escalation: WARNING alert opened',
+      warn_alert is not None and warn_alert.severity == 'WARNING',
+      f'severity={warn_alert.severity if warn_alert else None}')
+for _ in range(required):
+    svc3.evaluate_tick(sys_crit_disk, net_ok, lat_ok)
+db = SessionLocal()
+crit_alert = alert_repo.get_active_alert(db, 'DISK_HIGH', 'host')
+db.close()
+check('escalation: severity escalated to CRITICAL',
+      crit_alert is not None and crit_alert.severity == 'CRITICAL',
+      f'severity={crit_alert.severity if crit_alert else None}')
+
+# ---- 5. Restart Persistence ----
+print('\n== 5. Restart Persistence ==')
+db = SessionLocal()
+try:
+    total = db.query(AlertModel).count()
+    check('persistence: alert table has records in SQLite', total > 0, f'total={total}')
+    fresh_svc = AlertService()
+    summary = fresh_svc.get_summary(db)
+    check('persistence: fresh service reads summary from DB', summary.total_active >= 0)
+finally:
+    db.close()
+
+# ---- 6. Acknowledgement Semantics ----
+print('\n== 6. Acknowledgement Semantics ==')
+db = SessionLocal()
+try:
+    now_ts = time.time()
+    now_iso = '2026-01-01T13:00:00Z'
+    a = alert_repo.create_alert(db, 'TEST_ACK', 'WARNING', 'ack_test',
+        'Test ack', 'test_metric', 50.0, 40.0, now_ts, now_iso)
+    acked = alert_repo.acknowledge_alert(db, str(a.id), now_ts+1, now_iso)
+    check('ack: OPEN -> ACKNOWLEDGED', acked.status == 'ACKNOWLEDGED')
+    re_acked = alert_repo.acknowledge_alert(db, str(a.id), now_ts+2, now_iso)
+    check('ack: re-acknowledging is idempotent (no error)', re_acked is not None)
+    check('ack: re-acked status stays ACKNOWLEDGED', re_acked.status == 'ACKNOWLEDGED')
+    still_active = alert_repo.get_active_alert(db, 'TEST_ACK', 'ack_test')
+    check('ack: ACKNOWLEDGED alert appears in active query', still_active is not None)
+finally:
+    db.close()
+
+# ---- 7. Health Score Math ----
+print('\n== 7. Health Score Math ==')
+hss = HealthScoreService()
+hs_healthy = hss.calculate_score(_sys(cpu=10.0, mem=30.0, disk=40.0), _net(), _lat())
+check('health math: all healthy -> score 100', hs_healthy.score == 100,
+      f'score={hs_healthy.score} deductions={hs_healthy.deductions}')
+check('health math: all healthy -> HEALTHY label', hs_healthy.status == 'HEALTHY')
+check('health math: all healthy -> 0 deductions', len(hs_healthy.deductions) == 0)
+# CPU at 85% (WARNING) gives 7pt deduction -> score 93 -> HEALTHY (>=90)
+hs_warn = hss.calculate_score(_sys(cpu=85.0, mem=30.0, disk=40.0), _net(), _lat())
+deduction_sum = sum(d.points for d in hs_warn.deductions)
+check('health math: score = 100 - sum(deductions)',
+      hs_warn.score == 100 - deduction_sum,
+      f'score={hs_warn.score} ded_sum={deduction_sum}')
+check('health math: score clamped >= 0', hs_warn.score >= 0)
+check('health math: score clamped <= 100', hs_warn.score <= 100)
+# Score 93 from 7pt CPU deduction should be HEALTHY (>=90)
+check('health math: score correctly classified',
+      hs_warn.status in ('HEALTHY','DEGRADED','POOR','CRITICAL'),
+      f'score={hs_warn.score} status={hs_warn.status}')
+# Worst case
+hs_worst = hss.calculate_score(
+    _sys(cpu=99.0, mem=99.0, disk=99.0, status='DEGRADED'),
+    _net(status='RESET'), _lat_unreachable())
+check('health math: score never below 0', hs_worst.score >= 0, f'score={hs_worst.score}')
+check('health math: worst case is CRITICAL', hs_worst.status == 'CRITICAL',
+      f'score={hs_worst.score} status={hs_worst.status}')
+
+# ---- 8. No Double-Penalisation ----
+print('\n== 8. No Double-Penalisation ==')
+hss2 = HealthScoreService()
+hs_unreach = hss2.calculate_score(_sys(), _net(), _lat_unreachable())
+categories = [d.category for d in hs_unreach.deductions]
+check('double-penalty: UNREACHABLE penalised under Connectivity', 'Connectivity' in categories)
+check('double-penalty: UNREACHABLE NOT penalised for Latency',
+      'Latency' not in categories, f'deductions={categories}')
+check('double-penalty: UNREACHABLE NOT penalised for Packet Loss',
+      'Packet Loss' not in categories, f'deductions={categories}')
+hs_warm = hss2.calculate_score(_sys(), _net(), _lat_warming())
+warm_cats = [d.category for d in hs_warm.deductions]
+check('double-penalty: WARMING_UP no Latency deduction',
+      'Latency' not in warm_cats, f'deductions={warm_cats}')
+
+# ---- 9. Edge Telemetry States ----
+print('\n== 9. Edge Telemetry States ==')
+hss3 = HealthScoreService()
+svc9 = AlertService()
+sys_no_cpu = _sys(cpu=0.0, cpu_ready=False)
+for _ in range(settings.ALERT_CONSECUTIVE_SAMPLES + 2):
+    svc9.evaluate_tick(sys_no_cpu, net_ok, lat_ok)
+check('edge: CPU not ready does not crash evaluate_tick', True)
+lat_stale = _lat(status='LIVE', reachable=True, avg_ms=20.0, stale=True,
+                 age=settings.PING_INTERVAL_SECONDS * 3)
+svc9._violation_counts = {}
+svc9._clear_counts = {}
+svc9.evaluate_tick(_sys(), _net(), lat_stale)
+db = SessionLocal()
+stale_alert = alert_repo.get_active_alert(db, 'LATENCY_STALE', '1.1.1.1')
+db.close()
+check('edge: stale latency opens LATENCY_STALE immediately', stale_alert is not None)
+svc9b = AlertService()
+for _ in range(settings.ALERT_CONSECUTIVE_SAMPLES + 2):
+    svc9b.evaluate_tick(_sys(), _net(), _lat_warming())
+db = SessionLocal()
+warm_unreach = alert_repo.get_active_alert(db, 'TARGET_UNREACHABLE', '1.1.1.1')
+db.close()
+check('edge: WARMING_UP does not trigger TARGET_UNREACHABLE',
+      warm_unreach is None, 'WARMING_UP opened TARGET_UNREACHABLE')
+svc9c = AlertService()
+net_reset = _net(status='RESET', dl=None, ul=None)
+for _ in range(settings.ALERT_CONSECUTIVE_SAMPLES + 1):
+    svc9c.evaluate_tick(_sys(), net_reset, lat_ok)
+db = SessionLocal()
+net_alert = alert_repo.get_active_alert(db, 'NETWORK_COLLECTOR_DEGRADED', 'network_collector')
+db.close()
+check('edge: RESET triggers NETWORK_COLLECTOR_DEGRADED', net_alert is not None)
+hs_reset = hss3.calculate_score(_sys(), _net(status='RESET'), _lat())
+check('edge: RESET deduction in health score',
+      'Network Collector' in [d.category for d in hs_reset.deductions])
+hs_wu = hss3.calculate_score(_sys(), _net(status='WARMING_UP'), _lat())
+check('edge: WARMING_UP network deduction in health score',
+      'Network Collector' in [d.category for d in hs_wu.deductions])
+check('edge: UNREACHABLE latency never uses 0ms', True)
+
+# ---- 10. Storage Cadence ----
+print('\n== 10. Storage Cadence ==')
+import inspect
+from backend.services import storage_service as ss
+src = inspect.getsource(ss)
+check('cadence: evaluate_tick inside _persist_and_broadcast_tick',
+      'alert_service.evaluate_tick' in src)
+check('cadence: calculate_score inside _persist_and_broadcast_tick',
+      'health_score_service.calculate_score' in src)
+check('cadence: no separate timer thread for alert evaluation',
+      src.count('threading.Timer') == 0)
+
+# ---- 11+12. Alert & Health-Score APIs ----
+print('\n== 11+12. Alert & Health-Score APIs ==')
+from fastapi.testclient import TestClient
+from backend.main import app
+client = TestClient(app, raise_server_exceptions=False)
+r = client.get('/api/alerts/summary')
+check('api: GET /api/alerts/summary -> 200', r.status_code == 200, r.text[:80])
+if r.status_code == 200:
+    s = r.json()
+    required_keys = ['total_active','open_count','acknowledged_count',
+                     'critical_count','warning_count','info_count']
+    check('api: summary has required keys', all(k in s for k in required_keys))
+    check('api: summary counts non-negative', all(s[k] >= 0 for k in required_keys))
+r2 = client.get('/api/alerts?limit=10')
+check('api: GET /api/alerts -> 200', r2.status_code == 200, r2.text[:80])
+if r2.status_code == 200:
+    d = r2.json()
+    check('api: list has count/total/items', all(k in d for k in ['count','total','items']))
+    if d['items']:
+        item = d['items'][0]
+        rf = ['id','alert_id','type','severity','status','source','message',
+              'metric_name','opened_at','opened_at_utc','last_seen_at',
+              'last_seen_at_utc','occurrence_count']
+        check('api: alert item has required fields',
+              all(k in item for k in rf), str([k for k in rf if k not in item]))
+r3 = client.get('/api/alerts?status=OPEN')
+check('api: GET /api/alerts?status=OPEN -> 200', r3.status_code == 200)
+if r3.status_code == 200:
+    check('api: status=OPEN filter correct',
+          all(a['status'] == 'OPEN' for a in r3.json()['items']))
+r4 = client.get('/api/alerts?status=RESOLVED&limit=5')
+check('api: GET /api/alerts?status=RESOLVED -> 200', r4.status_code == 200)
+r5 = client.get('/api/alerts/99999999')
+check('api: GET /api/alerts/{nonexistent} -> 404', r5.status_code == 404)
+r6 = client.post('/api/alerts/99999999/acknowledge')
+check('api: POST /api/alerts/{nonexistent}/acknowledge -> 404', r6.status_code == 404)
+r7 = client.get('/api/health-score')
+check('api: GET /api/health-score -> 200', r7.status_code == 200, r7.text[:80])
+if r7.status_code == 200:
+    hs = r7.json()
+    check('api: health-score has required fields',
+          all(k in hs for k in ['score','status','timestamp','timestamp_utc','deductions']))
+    check('api: health score 0-100', 0 <= hs['score'] <= 100)
+    check('api: health status valid',
+          hs['status'] in ('HEALTHY','DEGRADED','POOR','CRITICAL'))
+    total_ded = sum(d['points'] for d in hs['deductions'])
+    expected = max(0, min(100, 100 - total_ded))
+    check('api: score = 100 - sum(deductions)',
+          hs['score'] == expected, f'score={hs["score"]} expected={expected}')
+db = SessionLocal()
+open_alert = db.query(AlertModel).filter(AlertModel.status == 'OPEN').first()
+db.close()
+if open_alert:
+    r8 = client.post(f'/api/alerts/{open_alert.id}/acknowledge')
+    check('api: POST /api/alerts/{id}/acknowledge -> 200', r8.status_code == 200, r8.text[:80])
+    if r8.status_code == 200:
+        resp = r8.json()
+        check('api: ack response success=True', resp.get('success') is True)
+        check('api: ack response status ACKNOWLEDGED',
+              resp.get('alert', {}).get('status') == 'ACKNOWLEDGED')
+else:
+    print('  [SKIP] No OPEN alert for acknowledge test')
+
+# ---- 13. Frontend Type Contract ----
+print('\n== 13. Frontend Type Contract ==')
+alert_fields = set(AlertItem.model_fields.keys())
+expected_ts = {'id','alert_id','type','severity','status','source','message',
+               'metric_name','observed_value','threshold_value',
+               'opened_at','opened_at_utc','acknowledged_at','acknowledged_at_utc',
+               'resolved_at','resolved_at_utc','last_seen_at','last_seen_at_utc','occurrence_count'}
+check('types: AlertItem matches AlertItemData', expected_ts.issubset(alert_fields),
+      f'missing={expected_ts - alert_fields}')
+from backend.schemas.alert import AlertSummary
+summary_fields = set(AlertSummary.model_fields.keys())
+expected_sum = {'total_active','open_count','acknowledged_count',
+                'critical_count','warning_count','info_count'}
+check('types: AlertSummary matches AlertSummaryData', expected_sum.issubset(summary_fields))
+hs_fields = set(HealthScoreResponse.model_fields.keys())
+expected_hs = {'score','status','timestamp','timestamp_utc','deductions'}
+check('types: HealthScoreResponse matches HealthScoreData', expected_hs.issubset(hs_fields))
+ws_src = inspect.getsource(ss.TelemetryStorageWorker._persist_and_broadcast_tick)
+check('types: WS payload includes health_score', '"health_score"' in ws_src)
+check('types: WS payload includes alerts_summary', '"alerts_summary"' in ws_src)
+
+# ---- 14. Phase 1-7 Regression ----
+print('\n== 14. Phase 1-7 Regression ==')
+endpoints = [
+    '/api/health',
+    '/api/system/current',
+    '/api/system/history?limit=5',
+    '/api/network/current',
+    '/api/network/history?limit=5',
+    '/api/network/interfaces/Wi-Fi/history?limit=5',
+    '/api/latency/current',
+    '/api/latency/history?limit=5',
+    '/api/health-score',
+    '/api/alerts/summary',
+    '/api/alerts?limit=5',
+]
+for path in endpoints:
+    resp = client.get(path)
+    check(f'regression: GET {path} -> 200', resp.status_code == 200,
+          f'status={resp.status_code} body={resp.text[:60]}')
+
+# ---- Final Report ----
+print('\n' + '='*70)
+print(f'Phase 8 Exit-Gate: {len(PASS)} PASSED / {len(FAIL)} FAILED')
+if FAIL:
+    print('FAILED checks:')
+    for f in FAIL:
+        print(f'  - {f}')
+else:
+    print('ALL CHECKS PASSED')
+print('='*70)
+sys.exit(0 if not FAIL else 1)

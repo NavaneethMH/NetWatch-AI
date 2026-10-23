@@ -1,0 +1,122 @@
+/* ============================================================
+   PHASE 11 — REAL PACKET & PROTOCOL ANALYTICS PAGE STYLES
+   Uses existing NetWatch NOC dark palette CSS variables.
+   ============================================================ */
+
+.protocols-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .protocols-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.protocol-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.protocol-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Distribution bar */
+.distribution-bar-track {
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.dist-segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.dist-segment--tcp   { background: var(--accent-cyan, #00e5ff); }
+.dist-segment--udp   { background: var(--status-warning, #f59e0b); }
+.dist-segment--icmp  { background: #a855f7; }
+.dist-segment--other { background: #64748b; }
+
+.dist-segment--ipv4  { background: #3b82f6; }
+.dist-segment--ipv6  { background: #10b981; }
+
+.protocol-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.protocol-legend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.protocol-legend-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Permission warning banner */
+.perm-warning-banner {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-sm, 6px);
+  padding: 14px 18px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.perm-warning-icon {
+  color: var(--status-warning, #f59e0b);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.perm-warning-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--status-warning, #f59e0b);
+  margin: 0 0 4px 0;
+}
+
+.perm-warning-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
