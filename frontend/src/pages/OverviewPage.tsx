@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../utils/api';
 import type { 
   SystemTelemetry, 
   NetworkThroughput, 
@@ -47,7 +48,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
     else if (selectedRange === '1h') limit = 1000;
 
     setIsLoadingHistory(true);
-    fetch(`/api/network/history?limit=${limit}&order=asc`)
+    fetch(apiUrl(`/api/network/history?limit=${limit}&order=asc`))
       .then(res => res.json())
       .then(data => {
         const points: ChartDataPoint[] = (data.items || []).map((item: any) => {

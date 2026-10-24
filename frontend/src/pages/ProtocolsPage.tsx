@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiUrl } from '../utils/api';
 import { 
   Activity, 
   RefreshCw, 
@@ -31,8 +32,8 @@ export const ProtocolsPage: React.FC<ProtocolsPageProps> = ({ protocolSummary })
       setLoading(true);
       setError(null);
       const [curRes, histRes] = await Promise.all([
-        fetch('/api/protocols/current'),
-        fetch('/api/protocols/history?limit=30')
+        fetch(apiUrl('/api/protocols/current')),
+        fetch(apiUrl('/api/protocols/history?limit=30'))
       ]);
 
       if (curRes.ok) {

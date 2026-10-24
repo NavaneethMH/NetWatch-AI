@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { DeviceItem, DeviceListResponse, DiscoveryStatus, DeviceSummary } from '../types/telemetry';
 import { getAuthHeaders } from '../utils/auth';
+import { apiUrl } from '../utils/api';
 
 interface DevicesPageProps {
   deviceSummary?: DeviceSummary | null;
@@ -234,7 +235,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ deviceSummary }) => {
   // ── Fetch devices list ──
   const fetchDevices = useCallback(async () => {
     try {
-      let url = '/api/devices?limit=500';
+      let url = apiUrl('/api/devices?limit=500');
       if (statusFilter !== 'ALL') url += `&status=${statusFilter}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
 
@@ -250,7 +251,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ deviceSummary }) => {
   // ── Fetch discovery status ──
   const fetchDiscoveryStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/devices/discovery/status');
+      const res = await fetch(apiUrl('/api/devices/discovery/status'));
       if (res.ok) {
         const ds: DiscoveryStatus = await res.json();
         setDiscoveryStatus(ds);
@@ -284,7 +285,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ deviceSummary }) => {
     setScanning(true);
     try {
       const headers = getAuthHeaders();
-      await fetch('/api/devices/scan', { method: 'POST', headers });
+      await fetch(apiUrl('/api/devices/scan'), { method: 'POST', headers });
       // Poll status until IDLE
       let attempts = 0;
       const poll = setInterval(async () => {

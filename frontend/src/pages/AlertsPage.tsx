@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { AlertItemData, AlertSummaryData } from '../types/telemetry';
 import { getAuthHeaders } from '../utils/auth';
+import { apiUrl } from '../utils/api';
 
 interface AlertsPageProps {
   alertsSummary: AlertSummaryData | null;
@@ -29,7 +30,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ alertsSummary }) => {
   const fetchAlerts = useCallback(async () => {
     setIsLoading(true);
     try {
-      let url = '/api/alerts?limit=150';
+      let url = apiUrl('/api/alerts?limit=150');
       if (statusFilter !== 'ALL') url += `&status=${statusFilter}`;
       if (severityFilter !== 'ALL') url += `&severity=${severityFilter}`;
       
@@ -54,7 +55,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ alertsSummary }) => {
   const handleAcknowledge = async (alertId: number) => {
     setAcknowledgingId(alertId);
     try {
-      const res = await fetch(`/api/alerts/${alertId}/acknowledge`, {
+      const res = await fetch(apiUrl(`/api/alerts/${alertId}/acknowledge`), {
         method: 'POST',
         headers: getAuthHeaders()
       });

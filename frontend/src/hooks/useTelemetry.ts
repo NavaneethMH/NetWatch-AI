@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { apiUrl, telemetryWebSocketUrl } from '../utils/api';
 import type { 
   SystemTelemetry, 
   NetworkThroughput, 
@@ -70,11 +71,11 @@ export function useTelemetry(maxLivePoints = 60): UseTelemetryReturn {
   const fetchInitialSnapshot = useCallback(async () => {
     try {
       const [sysRes, netRes, latRes, healthRes, alertRes] = await Promise.all([
-        fetch('/api/system/current'),
-        fetch('/api/network/current'),
-        fetch('/api/latency/current'),
-        fetch('/api/health-score'),
-        fetch('/api/alerts/summary')
+        fetch(apiUrl('/api/system/current')),
+        fetch(apiUrl('/api/network/current')),
+        fetch(apiUrl('/api/latency/current')),
+        fetch(apiUrl('/api/health-score')),
+        fetch(apiUrl('/api/alerts/summary'))
       ]);
       if (sysRes.ok) {
         const sys: SystemTelemetry = await sysRes.json();
@@ -107,10 +108,7 @@ export function useTelemetry(maxLivePoints = 60): UseTelemetryReturn {
     }
 
     setConnState('CONNECTING');
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/telemetry`;
-
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(telemetryWebSocketUrl());
     wsRef.current = socket;
 
     socket.onopen = () => {

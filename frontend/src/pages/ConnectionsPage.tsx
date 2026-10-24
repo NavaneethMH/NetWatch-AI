@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { apiUrl } from '../utils/api';
 import { 
   GitCommit, 
   Search, 
@@ -49,7 +50,7 @@ export const ConnectionsPage: React.FC<ConnectionsPageProps> = ({ connectionSumm
       if (search.trim()) params.append('search', search.trim());
       params.append('limit', '500');
 
-      const res = await fetch(`/api/connections?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/connections?${params.toString()}`));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }

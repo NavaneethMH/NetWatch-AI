@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../utils/api';
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -189,7 +190,7 @@ export const HistoryPage: React.FC = () => {
 
   // Fetch coverage once on mount
   useEffect(() => {
-    fetch('/api/analytics/coverage')
+    fetch(apiUrl('/api/analytics/coverage'))
       .then(r => r.json())
       .then(setCoverage)
       .catch(console.error);
@@ -199,7 +200,7 @@ export const HistoryPage: React.FC = () => {
   useEffect(() => {
     if (subPage !== 'charts') return;
     setTsLoading(true);
-    fetch(`/api/analytics/timeseries?range=${range}`)
+    fetch(apiUrl(`/api/analytics/timeseries?range=${range}`))
       .then(r => r.json())
       .then(setTimeseries)
       .catch(console.error)
@@ -210,7 +211,7 @@ export const HistoryPage: React.FC = () => {
   useEffect(() => {
     if (subPage !== 'report') return;
     setReportLoading(true);
-    fetch(`/api/analytics/report?range=${range}`)
+    fetch(apiUrl(`/api/analytics/report?range=${range}`))
       .then(r => r.json())
       .then(setReport)
       .catch(console.error)
@@ -222,8 +223,8 @@ export const HistoryPage: React.FC = () => {
     if (subPage !== 'audit') return;
     setLoading(true);
     const ep = auditTab === 'network'
-      ? '/api/network/history?limit=200&order=desc'
-      : '/api/system/history?limit=200&order=desc';
+      ? apiUrl('/api/network/history?limit=200&order=desc')
+      : apiUrl('/api/system/history?limit=200&order=desc');
     fetch(ep)
       .then(r => r.json())
       .then(d => setAuditRows(d.items || []))
@@ -309,11 +310,11 @@ export const HistoryPage: React.FC = () => {
               const ts = Date.now();
               if (subPage === 'charts') {
                 setTsLoading(true);
-                fetch(`/api/analytics/timeseries?range=${range}&_t=${ts}`)
+                fetch(apiUrl(`/api/analytics/timeseries?range=${range}&_t=${ts}`))
                   .then(r => r.json()).then(setTimeseries).finally(() => setTsLoading(false));
               } else if (subPage === 'report') {
                 setReportLoading(true);
-                fetch(`/api/analytics/report?range=${range}&_t=${ts}`)
+                fetch(apiUrl(`/api/analytics/report?range=${range}&_t=${ts}`))
                   .then(r => r.json()).then(setReport).finally(() => setReportLoading(false));
               }
             }}

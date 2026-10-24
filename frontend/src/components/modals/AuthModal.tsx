@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Key, Shield, Check, X, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { getOperatorKey, setOperatorKey } from '../../utils/auth';
+import { apiUrl } from '../../utils/api';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -51,7 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSaved }
     }
     setTestStatus('TESTING');
     try {
-      const res = await fetch('/api/devices/scan', {
+      const res = await fetch(apiUrl('/api/devices/scan'), {
         method: 'POST',
         headers: { 'X-NetWatch-Key': apiKey.trim() }
       });
