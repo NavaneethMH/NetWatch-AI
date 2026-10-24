@@ -20,3 +20,6 @@ INFO:     127.0.0.1:34691 - "GET /api/health HTTP/1.1" 200 OK
 2026-10-25 00:30:05,998 [INFO] netwatch.db.device_repo: New device discovered: mac=8c:83:94:3c:bb:5c ip=192.168.31.1 iface=Wi-Fi
 2026-10-25 00:30:06,001 [INFO] netwatch.db.device_repo: New device discovered: mac=9a:7b:65:b2:7c:36 ip=192.168.31.29 iface=Wi-Fi
 2026-10-25 00:30:06,004 [INFO] netwatch.db.device_repo: New device discovered: mac=e2:39:5a:8b:b6:91 ip=192.168.31.131 iface=Wi-Fi
+2026-10-25 00:30:50,886 [INFO] netwatch.services.alert: Opened new WARNING alert: CPU_HIGH on host
+2026-10-25 00:30:54,839 [INFO] netwatch.services.alert: Resolved alert: CPU_HIGH on host
+2026-10-25 00:31:26,549 [INFO] netwatch.collectors.device: DeviceDiscovery: scan complete in 20.54s — 3 device(s) on 192.168.31.0/24 via Wi-Fi
