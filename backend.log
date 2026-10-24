@@ -1,0 +1,22 @@
+INFO:     Started server process [19292]
+INFO:     Waiting for application startup.
+2026-10-25 00:29:40,570 [INFO] netwatch.main: Cleaned up stale PID file from previously terminated PID 26104.
+2026-10-25 00:29:40,571 [INFO] netwatch.main: Starting NetWatch autonomous storage and telemetry worker...
+2026-10-25 00:29:40,594 [INFO] netwatch.storage_worker: [TelemetryStorageWorker] Retention cleanup completed successfully (cutoff_ts=1792263580.585296).
+2026-10-25 00:29:40,595 [INFO] netwatch.storage_worker: TelemetryStorageWorker started successfully.
+2026-10-25 00:29:40,604 [INFO] netwatch.main: Starting NetWatch latency probe collector...
+2026-10-25 00:29:40,623 [INFO] netwatch.collectors.latency: LatencyCollector started for target 1.1.1.1 (interval=5s, count=4).
+2026-10-25 00:29:40,624 [INFO] netwatch.main: Starting NetWatch LAN device discovery worker...
+2026-10-25 00:29:40,629 [INFO] netwatch.collectors.device: DeviceDiscoveryCollector started (interval=60s)
+2026-10-25 00:29:40,629 [INFO] netwatch.main: Starting NetWatch host active connection collector...
+2026-10-25 00:29:40,645 [INFO] netwatch.collectors.connections: ConnectionCollector background worker started.
+2026-10-25 00:29:40,646 [INFO] netwatch.main: Starting NetWatch packet and protocol analytics collector...
+2026-10-25 00:29:40,656 [INFO] netwatch.collectors.packets: PacketCollector background thread started.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-10-25 00:29:42,329 [INFO] netwatch.collectors.packets: Packet capture LIVE via Npcap on Wi-Fi (192.168.31.49).
+INFO:     127.0.0.1:34691 - "GET /api/health HTTP/1.1" 200 OK
+2026-10-25 00:30:05,990 [INFO] netwatch.collectors.device: DeviceDiscovery: scan complete in 20.35s — 3 device(s) on 192.168.31.0/24 via Wi-Fi
+2026-10-25 00:30:05,998 [INFO] netwatch.db.device_repo: New device discovered: mac=8c:83:94:3c:bb:5c ip=192.168.31.1 iface=Wi-Fi
+2026-10-25 00:30:06,001 [INFO] netwatch.db.device_repo: New device discovered: mac=9a:7b:65:b2:7c:36 ip=192.168.31.29 iface=Wi-Fi
+2026-10-25 00:30:06,004 [INFO] netwatch.db.device_repo: New device discovered: mac=e2:39:5a:8b:b6:91 ip=192.168.31.131 iface=Wi-Fi

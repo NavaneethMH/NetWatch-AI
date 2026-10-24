@@ -28,6 +28,13 @@ NetWatch AI is a production-conscious, low-overhead network monitoring system en
 
 ## Getting Started
 
+### Quick Start (Windows)
+Double-click [`start_servers.bat`](file:///c:/Users/navan/OneDrive/Desktop/NetWatch%20AI/start_servers.bat) or run:
+```cmd
+start_servers.bat
+```
+This automatically boots both the FastAPI backend and Vite frontend dev servers in dedicated windows.
+
 ### 1. Prerequisites
 - Python 3.11+
 - Node.js 18+ & npm
